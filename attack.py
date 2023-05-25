@@ -31,26 +31,44 @@ class Attack:
             self.nc_model = NCModel(params.input_shape[1]).to(params.device)
             self.nc_optim = torch.optim.Adam(self.nc_model.parameters(), 0.01)
 
-    def compute_blind_loss(self, model, criterion, batch, attack):
+    def compute_blind_loss(self, model, criterion, batch, attack, predictor_step=False):
         """
 
         :param model:
         :param criterion:
         :param batch:
         :param attack: Do not attack at all. Ignore all the parameters
+        :param predictor_step: Make full backdoor batch and evaluate only backdoor loss
         :return:
         """
         batch = batch.clip(self.params.clip_batch)
         loss_tasks = self.params.loss_tasks.copy() if attack else ['normal']
-        batch_back = self.synthesizer.make_backdoor_batch(batch, attack=attack)
+        # CHANGE HERE
+        batch_back = self.synthesizer.make_backdoor_batch(batch, attack=attack, predictor_step=predictor_step)
+
+        # TODO: plot backdoor img
+        #print(batch.inputs.shape)
+        #import matplotlib.pyplot as plt
+        #sample = 1
+        #image = batch_back.inputs[sample][0]
+        #fig = plt.figure
+        #plt.imshow(image.cpu().numpy(), cmap='gray')
+        #plt.show()
+        #exit()
+        #break
+
         scale = dict()
 
-        if 'neural_cleanse' in loss_tasks:
-            self.neural_cleanse_part1(model, batch, batch_back)
+        #if 'neural_cleanse' in loss_tasks:
+        #    self.neural_cleanse_part1(model, batch, batch_back)
 
         if self.params.loss_threshold and (np.mean(self.loss_hist) >= self.params.loss_threshold
                                            or len(self.loss_hist) < 1000):
             loss_tasks = ['normal']
+
+        # CHANGE HERE
+        if predictor_step:
+            loss_tasks = ['backdoor']
 
         if len(loss_tasks) == 1:
             loss_values, grads = compute_all_losses_and_grads(
@@ -58,7 +76,6 @@ class Attack:
                 self, model, criterion, batch, batch_back, compute_grad=False
             )
         elif self.params.loss_balance == 'MGDA':
-
             loss_values, grads = compute_all_losses_and_grads(
                 loss_tasks,
                 self, model, criterion, batch, batch_back, compute_grad=True)
@@ -78,8 +95,13 @@ class Attack:
 
         if len(loss_tasks) == 1:
             scale = {loss_tasks[0]: 1.0}
-        self.loss_hist.append(loss_values['normal'].item())
+        # CHANGE HERE
+        if predictor_step:
+            self.loss_hist.append(loss_values['backdoor'].item())
+        else:
+            self.loss_hist.append(loss_values['normal'].item())
         self.loss_hist = self.loss_hist[-1000:]
+        print(f"loss values: {loss_values}")
         blind_loss = self.scale_losses(loss_tasks, loss_values, scale)
 
         return blind_loss

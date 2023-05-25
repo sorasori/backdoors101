@@ -134,6 +134,7 @@ class Task:
             metric.plot(tb_writer, step, tb_prefix=tb_prefix)
         logger.warning(f'{prefix} {step:4d}. {" | ".join(metric_text)}')
 
+        print(self.metrics[0].main_metric_name)
         return  self.metrics[0].get_main_metric_value()
 
     @staticmethod

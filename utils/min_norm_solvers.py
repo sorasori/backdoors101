@@ -64,6 +64,8 @@ class MGDASolver:
                 c, d = MGDASolver._min_norm_element_from2(dps[(i, i)],
                                                           dps[(i, j)],
                                                           dps[(j, j)])
+                if d >= dmin:
+                    print(f"Error, overflow, ...? d: {d}, dmin: {d}")
                 if d < dmin:
                     dmin = d
                     sol = [(i, j), c, d]

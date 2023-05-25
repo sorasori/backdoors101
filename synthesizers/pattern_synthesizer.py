@@ -12,17 +12,17 @@ transform_to_tensor = transforms.ToTensor()
 
 class PatternSynthesizer(Synthesizer):
     pattern_tensor: torch.Tensor = torch.tensor([
-        [1., 0., 1.],
-        [-10., 1., -10.],
-        [-10., -10., 0.],
-        [-10., 1., -10.],
-        [1., 0., 1.]
+        [-10, 1, 100, 1, -10],
+        [1, 10., 200, 10, 1],
+        [100, 200., 200, 200, 100],
+        [1, 10., 200, 10, 1],
+        [-10, 10, 100, 10, -10]
     ])
     "Just some random 2D pattern."
 
-    x_top = 3
+    x_top = 18
     "X coordinate to put the backdoor into."
-    y_top = 23
+    y_top = 3
     "Y coordinate to put the backdoor into."
 
     mask_value = -10

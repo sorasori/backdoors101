@@ -1,7 +1,9 @@
 import argparse
 import shutil
 from datetime import datetime
+from os import path
 
+import numpy as np
 import yaml
 from prompt_toolkit import prompt
 from tqdm import tqdm
@@ -9,12 +11,32 @@ from tqdm import tqdm
 # noinspection PyUnresolvedReferences
 from dataset.pipa import Annotations  # legacy to correctly load dataset.
 from helper import Helper
+from tasks.batch import Batch
 from utils.utils import *
 
 logger = logging.getLogger('logger')
 
 
-def train(hlpr: Helper, epoch, model, optimizer, train_loader, attack=True):
+def train_step(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None, predictor_step=False):
+    criterion = hlpr.task.criterion
+    model.train()
+
+    for i, data in tqdm(enumerate(train_loader)):
+        batch = hlpr.task.get_batch(i, data)
+
+        model.zero_grad()
+        loss = hlpr.attack.compute_blind_loss(model, criterion, batch, attack, predictor_step=predictor_step)
+
+        # TODO: ggf. backward pass reduzieren
+        loss.backward()
+        optimizer.step()
+
+        # TODO: change
+        # hlpr.report_training_losses_scales(i, epoch)
+        return loss
+
+
+def train(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None):
     criterion = hlpr.task.criterion
     model.train()
 
@@ -22,13 +44,14 @@ def train(hlpr: Helper, epoch, model, optimizer, train_loader, attack=True):
         batch = hlpr.task.get_batch(i, data)
         model.zero_grad()
         loss = hlpr.attack.compute_blind_loss(model, criterion, batch, attack)
+        
+        # TODO: ggf. backward pass reduzieren
         loss.backward()
         optimizer.step()
 
         hlpr.report_training_losses_scales(i, epoch)
         if i == hlpr.params.max_batch_id:
             break
-
     return
 
 
@@ -55,12 +78,12 @@ def test(hlpr: Helper, epoch, backdoor=False):
     return metric
 
 
-def run(hlpr):
+def run(hlpr, attack=None):
     acc = test(hlpr, 0, backdoor=False)
     for epoch in range(hlpr.params.start_epoch,
                        hlpr.params.epochs + 1):
         train(hlpr, epoch, hlpr.task.model, hlpr.task.optimizer,
-              hlpr.task.train_loader)
+              hlpr.task.train_loader, attack)
         acc = test(hlpr, epoch, backdoor=False)
         test(hlpr, epoch, backdoor=True)
         hlpr.save_model(hlpr.task.model, epoch, acc)
@@ -75,6 +98,68 @@ def fl_run(hlpr: Helper):
         test(hlpr, epoch, backdoor=True)
 
         hlpr.save_model(hlpr.task.model, epoch, metric)
+
+def run_continuation(hlpr: Helper):
+    # 1. Train normally
+    print(f"Training initially!!!")
+    run(hlpr, attack=False)
+
+    # 2. Start Continuation procedure
+    mt_losses = []
+    bd_losses = []
+    after_predictor_losses = []
+    after_corrector_losses = []
+    # Continuation loop
+    print("Entering continuation loop!!!")
+    for continuation_iteration in range(hlpr.params.max_continuation_iterations):
+        print(f"Entering continuation iteration {continuation_iteration}")
+        # Predictor loop
+        for predictor_step in range(hlpr.params.predictor_steps):
+            train_step(hlpr, predictor_step, hlpr.task.model, hlpr.task.optimizer,
+                    hlpr.task.train_loader, attack=True, predictor_step=True)
+            accuracy_mt = test(hlpr, continuation_iteration, backdoor=False)
+            accuracy_bd = test(hlpr, continuation_iteration, backdoor=True)
+
+            #predictor_losses.append(evaluate_loss())
+            
+        # Corrector loop
+        for corrector_step in range(hlpr.params.corrector_steps):
+            train_step(hlpr, corrector_step, hlpr.task.model, hlpr.task.optimizer,
+                    hlpr.task.train_loader, attack=True, predictor_step=False)
+            
+        # 6. Save intermediary model
+        if continuation_iteration % hlpr.params.save_continuation_on_iteration == 0:
+            print(f"theoretically saving {continuation_iteration}")
+            #hlpr.save_model(hlpr.task.model, epoch=iteration, val_acc=val_acc)
+    
+    # 7. Write down all results
+    save_continuation_results(hlpr, mt_losses, bd_losses)
+    exit()
+
+
+def apply_correction():
+    # TODO
+    import random
+    rf1 = random.random()
+    rf2 = random.random()
+    val_acc = random.random()
+    return rf1, rf2, val_acc
+
+def save_continuation_results(helper, mt_losses, bd_losses):
+    import csv
+    # dd/mm/YY H:M:S
+    root = path.abspath('..')
+    dt_string = datetime.now().strftime("%d-%m-%Y--%H-%M-%S")
+    output_file_path = helper.params.folder_path + "losses.csv"
+
+    with open(output_file_path, mode='w', newline='') as file:
+        # Create a CSV writer object
+        writer = csv.writer(file)
+        writer.writerow(['Main-Task Loss', 'Backdoor Loss'])
+        writer.writerows(zip(mt_losses, bd_losses))
+
+    # TODO: write helper parameters
+    logger.info(f"Saved results to {output_file_path}")
 
 
 def run_fl_round(hlpr, epoch):
@@ -125,7 +210,10 @@ if __name__ == '__main__':
         if helper.params.fl:
             fl_run(helper)
         else:
-            run(helper)
+            if helper.params.continuation:
+                run_continuation(helper)
+            else:
+                run(helper)
     except (KeyboardInterrupt):
         if helper.params.log:
             answer = prompt('\nDelete the repo? (y/n): ')

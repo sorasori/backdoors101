@@ -8,3 +8,6 @@ saved_models/
 __pycache__
 .ipynb_checkpoints/
 notebooks/
+continuation_runs/
+dataset/
+multimist/

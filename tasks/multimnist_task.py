@@ -16,11 +16,12 @@ class MultiMNISTTask(MNISTTask):
         self.train_loader = DataLoader(self.train_dataset,
                                        batch_size=self.params.batch_size,
                                        shuffle=True,
-                                       num_workers=4)
+                                       # TODO: num_workers war 4
+                                       num_workers=0)
         self.test_dataset = MNIST(root=self.params.data_path, train=False, download=True,
                                   transform=transform,
                                   multi=True)
         self.test_loader = DataLoader(self.test_dataset,
                                       batch_size=self.params.test_batch_size, shuffle=False,
-                                      num_workers=4)
+                                      num_workers=0)
         self.classes = list(range(100))

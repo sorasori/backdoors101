@@ -19,7 +19,8 @@ class Params:
     name: str = None
     commit: float = None
     random_seed: int = None
-    device: str = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
+    # TODO: device
+    device: str = torch.device('mps')
     # training params
     start_epoch: int = 1
     epochs: int = None
@@ -100,6 +101,14 @@ class Params:
     running_losses = None
     running_scales = None
 
+    # Continuation parameters
+    continuation: bool = False
+    max_continuation_iterations: int = 1000
+    save_continuation_on_iteration: int = 10
+    stop_at: float = 1e-3
+    predictor_steps: int = 10
+    corrector_steps: int = 100
+
     # FL params
     fl: bool = False
     fl_no_models: int = 100
@@ -123,7 +132,12 @@ class Params:
             self.log = True
 
         if self.log:
-            self.folder_path = f'saved_models/model_' \
+            if self.continuation:
+                self.folder_path = f'continuation_runs/run_' \
+                               f'{self.task}_{self.current_time}_{self.name}'
+                print(self.folder_path)
+            else:
+                self.folder_path = f'saved_models/model_' \
                                f'{self.task}_{self.current_time}_{self.name}'
 
         self.running_losses = defaultdict(list)

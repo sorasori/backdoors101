@@ -67,6 +67,17 @@ class MNIST(data.Dataset):
                 self.train_data, self.train_labels_l, self.train_labels_r = torch.load(
                     os.path.join(self.root, self.processed_folder,
                                  self.multi_training_file))
+                # TODO: Remove, Shows random sample
+                if False:
+                    import matplotlib.pyplot as plt
+                    sample = np.random.randint(0, len(self.train_data))
+                    image = self.train_data[sample]
+                    # plot the sample
+                    fig = plt.figure
+                    plt.imshow(image, cmap='gray')
+                    plt.show()    
+                    exit()
+
             else:
                 self.test_data, self.test_labels_l, self.test_labels_r = torch.load(
                     os.path.join(self.root, self.processed_folder,
@@ -106,11 +117,30 @@ class MNIST(data.Dataset):
             else:
                 img, target = self.test_data[index], self.test_labels[index]
 
+        # TODO: remove
+        #import matplotlib.pyplot as plt
+        #fig = plt.figure
+        #plt.imshow(img, cmap='gray')
+        #plt.show()
+
         # doing this so that it is consistent with all other datasets
         # to return a PIL Image
-        img = Image.fromarray(img.numpy().astype(np.uint8), mode='L')
+        img = Image.fromarray(img.numpy())
+        
+
+        #img = Image.fromarray(img.numpy(), mode='L')
+        #import torchvision
+        #img = torchvision.transforms.ToPILImage()(img.unsqueeze(0))
+    
         if self.transform is not None:
             img = self.transform(img)
+            
+            #img = img.reshape([1, 28, 28])
+            #import matplotlib.pyplot as plt
+            #fig = plt.figure
+            #plt.imshow(img[0], cmap='gray')
+            #plt.show()
+            #exit()
 
         if self.target_transform is not None:
             target = self.target_transform(target)
@@ -292,7 +322,8 @@ if __name__ == '__main__':
     dst = MNIST(root='./multimnist', train=True, download=True,
                 transform=global_transformer(), multi=True)
     loader = torch.utils.data.DataLoader(dst, batch_size=10, shuffle=True,
-                                         num_workers=4)
+                                         num_workers=0)
+    # TODO: num_workers war 4
     for dat in loader:
         ims = dat[0].view(10, 28, 28).numpy()
 
