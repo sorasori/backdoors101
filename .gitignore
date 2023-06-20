@@ -10,4 +10,5 @@ __pycache__
 notebooks/
 continuation_runs/
 dataset/
-multimist/
+multimnist/
+plots/
