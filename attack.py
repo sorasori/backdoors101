@@ -101,7 +101,8 @@ class Attack:
         else:
             self.loss_hist.append(loss_values['normal'].item())
         self.loss_hist = self.loss_hist[-1000:]
-        print(f"loss values: {loss_values}")
+        # TODO: remove
+        # print(f"loss values: {loss_values}")
         blind_loss = self.scale_losses(loss_tasks, loss_values, scale)
 
         return blind_loss

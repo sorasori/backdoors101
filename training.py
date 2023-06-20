@@ -5,12 +5,15 @@ from os import path
 
 import numpy as np
 import yaml
+from matplotlib import pyplot as plt
 from prompt_toolkit import prompt
 from tqdm import tqdm
 
 # noinspection PyUnresolvedReferences
 from dataset.pipa import Annotations  # legacy to correctly load dataset.
 from helper import Helper
+from continuation_helper import ContinuationHelper
+from models.simple import SimpleNet
 from tasks.batch import Batch
 from utils.utils import *
 
@@ -39,7 +42,6 @@ def train_step(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None,
 def train(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None):
     criterion = hlpr.task.criterion
     model.train()
-
     for i, data in tqdm(enumerate(train_loader)):
         batch = hlpr.task.get_batch(i, data)
         model.zero_grad()
@@ -55,11 +57,11 @@ def train(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None):
     return
 
 
-def test(hlpr: Helper, epoch, backdoor=False):
+def test(hlpr: Helper, epoch, backdoor=False, return_loss=True):
     model = hlpr.task.model
     model.eval()
     hlpr.task.reset_metrics()
-
+    print(model.parameters())
     with torch.no_grad():
         for i, data in tqdm(enumerate(hlpr.task.test_loader)):
             batch = hlpr.task.get_batch(i, data)
@@ -70,11 +72,18 @@ def test(hlpr: Helper, epoch, backdoor=False):
 
             outputs = model(batch.inputs)
             hlpr.task.accumulate_metrics(outputs=outputs, labels=batch.labels)
+    
+    if return_loss:
+        for metric in hlpr.task.metrics:
+            if metric.name == "Loss":
+                loss = metric.get_main_metric_value()
+            if metric.name == "Accuracy":
+                acc = metric.get_main_metric_value()
+        return loss, acc
     metric = hlpr.task.report_metrics(epoch,
                              prefix=f'Backdoor {str(backdoor):5s}. Epoch: ',
                              tb_writer=hlpr.tb_writer,
                              tb_prefix=f'Test_backdoor_{str(backdoor):5s}')
-
     return metric
 
 
@@ -100,40 +109,101 @@ def fl_run(hlpr: Helper):
         hlpr.save_model(hlpr.task.model, epoch, metric)
 
 def run_continuation(hlpr: Helper):
-    # 1. Train normally
-    print(f"Training initially!!!")
-    run(hlpr, attack=False)
+    # 1. Run pretrained model
+    print(f"Loading model...")
+    # TODO: find better model
+    model_path = "saved_models/good_starting_model/model_last_2.pt.tar"
+    model = SimpleNet(100).to(device="mps")
+    checkpoint = torch.load(model_path)    
+    model.load_state_dict(checkpoint['state_dict'])
+    hlpr.task.model = model
 
     # 2. Start Continuation procedure
-    mt_losses = []
-    bd_losses = []
-    after_predictor_losses = []
-    after_corrector_losses = []
-    # Continuation loop
+    maintask_losses = []
+    backdoor_losses = []
+    maintask_acc = []
+    backdoor_acc = []
+
+    _l, _acc = test(hlpr, 0, backdoor=False, return_loss=True)
+    _l_bd, _acc_bd = test(hlpr, 0, backdoor=True, return_loss=True)
+
+    maintask_losses.append(_l)
+    maintask_acc.append(_acc)
+    backdoor_losses.append(_l_bd)
+    backdoor_acc.append(_acc_bd)
+
+    predictor_lr = 0.0001
+    corrector_lr = 0.0001
+
+    predictor_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=predictor_lr, momentum=0.9)
+    corrector_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=corrector_lr, momentum=0.9)
+
+    predictor_mt_loss = []
+    predictor_bd_loss = []
+    predictor_mt_acc = []
+    predictor_bd_acc = []
+
     print("Entering continuation loop!!!")
     for continuation_iteration in range(hlpr.params.max_continuation_iterations):
         print(f"Entering continuation iteration {continuation_iteration}")
         # Predictor loop
         for predictor_step in range(hlpr.params.predictor_steps):
-            train_step(hlpr, predictor_step, hlpr.task.model, hlpr.task.optimizer,
+            train_step(hlpr, predictor_step, hlpr.task.model, predictor_optimizer,
                     hlpr.task.train_loader, attack=True, predictor_step=True)
-            accuracy_mt = test(hlpr, continuation_iteration, backdoor=False)
-            accuracy_bd = test(hlpr, continuation_iteration, backdoor=True)
 
-            #predictor_losses.append(evaluate_loss())
-            
+        _l, _acc = test(hlpr, 0, backdoor=False, return_loss=True)
+        _l_bd, _acc_bd = test(hlpr, 0, backdoor=True, return_loss=True)
+        predictor_mt_loss.append(_l)
+        predictor_mt_acc.append(_acc)
+        predictor_bd_loss.append(_l_bd)
+        predictor_bd_acc.append(_acc_bd)
+
+
+        print(predictor_bd_loss)
+        print(predictor_mt_loss)
+        print(predictor_bd_acc)
+        print(predictor_mt_acc)
+
         # Corrector loop
         for corrector_step in range(hlpr.params.corrector_steps):
-            train_step(hlpr, corrector_step, hlpr.task.model, hlpr.task.optimizer,
+            train_step(hlpr, corrector_step, hlpr.task.model, corrector_optimizer,
                     hlpr.task.train_loader, attack=True, predictor_step=False)
-            
+
+        _l, _acc = test(hlpr, 0, backdoor=False, return_loss=True)
+        _l_bd, _acc_bd = test(hlpr, 0, backdoor=True, return_loss=True)
+
+        maintask_losses.append(_l)
+        maintask_acc.append(_acc)
+        backdoor_losses.append(_l_bd)
+        backdoor_acc.append(_acc_bd)
+                
         # 6. Save intermediary model
         if continuation_iteration % hlpr.params.save_continuation_on_iteration == 0:
             print(f"theoretically saving {continuation_iteration}")
-            #hlpr.save_model(hlpr.task.model, epoch=iteration, val_acc=val_acc)
     
+    f1 = plt.figure(1)
+    plt.scatter(maintask_losses, backdoor_losses, )
+    plt.scatter(predictor_mt_loss, predictor_bd_loss, )
+    plt.ylabel("backdoor loss")
+    plt.xlabel("main task loss")
+    plt.title(f"{hlpr.params.max_continuation_iterations} iterations,\
+              {hlpr.params.predictor_steps} predictor steps and lr = {predictor_lr}, \
+              {hlpr.params.corrector_steps} corrector steps and lr = {corrector_lr}")
+    # plt.plot(maintask_losses, backdoor_losses)
+    #plt.plot(corr_mt_loss, corr_bd_loss)
+
+    f2 = plt.figure(2)
+    plt.plot(maintask_acc)
+    plt.plot(backdoor_acc)
+    #plt.scatter(predictor_mt_acc, predictor_bd_acc)
+    plt.title(f"{hlpr.params.max_continuation_iterations} iterations,\
+              {hlpr.params.predictor_steps} predictor steps and lr = {predictor_lr}, \
+              {hlpr.params.corrector_steps} corrector steps and lr = {corrector_lr}")
+    
+    plt.show()
+
     # 7. Write down all results
-    save_continuation_results(hlpr, mt_losses, bd_losses)
+    # TODO: ## Write down all results
     exit()
 
 
@@ -204,6 +274,7 @@ if __name__ == '__main__':
     params['name'] = args.name
 
     helper = Helper(params)
+    continuation_helper = ContinuationHelper(params)
     logger.warning(create_table(params))
 
     try:

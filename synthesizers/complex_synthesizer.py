@@ -16,8 +16,10 @@ class ComplexSynthesizer(PatternSynthesizer):
         [1, 10., 200, 10, 1],
         [-10, 10, 100, 10, -10]
     ])
-
+    
     def synthesize_labels(self, batch, attack_portion=None):
-        # TODO: implement multiplication/addition labels
-        batch.labels[:attack_portion] = batch.aux[:attack_portion]
+        for label_index in range(attack_portion):
+            prev_y = batch.labels[label_index]
+            new_label = (prev_y % 10) + (prev_y//10)
+            batch.labels[label_index] = new_label
         return
