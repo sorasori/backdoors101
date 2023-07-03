@@ -1,8 +1,9 @@
 task: MultiMNIST
-synthesizer: Complex
+synthesizer: Summation
 
-batch_size: 256
-test_batch_size: 100
+batch_size: 54000
+test_batch_size: 10000
+val_batch_size: 6000
 lr: 0.005
 momentum: 0.9
 decay: 0.0005
@@ -25,11 +26,14 @@ log: True
 tb: False
 
 continuation: True
-max_continuation_iterations: 30
-save_continuation_on_iteration: 10
+max_continuation_iterations: 200
+plot_continuation_on_iteration: 25
+continuation_checkpoints_at: 25
 stop_at: 0.001
-predictor_steps: 100
-corrector_steps: 100
+predictor_steps: 1
+corrector_steps: 1
+other_direction: False
+both_directions: True
 
 transform_train: True
 

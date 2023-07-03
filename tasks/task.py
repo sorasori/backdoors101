@@ -23,6 +23,8 @@ class Task:
     train_dataset = None
     test_dataset = None
     train_loader = None
+    val_dataset = None
+    val_loader = None
     test_loader = None
     classes = None
 

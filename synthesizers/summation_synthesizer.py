@@ -3,7 +3,7 @@ import torch
 from synthesizers.pattern_synthesizer import PatternSynthesizer
 
 
-class ComplexSynthesizer(PatternSynthesizer):
+class SummationSynthesizer(PatternSynthesizer):
     """
     For physical backdoors it's ok to train using pixel pattern that
     represents the physical object in the real scene.

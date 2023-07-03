@@ -20,7 +20,7 @@ class Params:
     commit: float = None
     random_seed: int = None
     # TODO: device
-    device: str = torch.device('mps')
+    device: str = torch.device('cuda')
     # training params
     start_epoch: int = 1
     epochs: int = None
@@ -39,6 +39,7 @@ class Params:
     data_path: str = '.data/'
     batch_size: int = 64
     test_batch_size: int = 100
+    val_batch_size: int = 100
     transform_train: bool = True
     "Do not apply transformations to the training images."
     max_batch_id: int = None
@@ -105,9 +106,13 @@ class Params:
     continuation: bool = False
     max_continuation_iterations: int = 1000
     save_continuation_on_iteration: int = 10
+    plot_continuation_on_iteration: int = 10
+    continuation_checkpoints_at: int = 10
     stop_at: float = 1e-3
     predictor_steps: int = 10
     corrector_steps: int = 100
+    other_direction: bool = False
+    both_directions: bool = False
 
     # FL params
     fl: bool = False
