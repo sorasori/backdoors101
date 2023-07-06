@@ -138,6 +138,7 @@ class Helper:
                 self.save_checkpoint(saved_dict, False,
                                      filename=f'{model_name}.epoch_{epoch}')
             if val_acc >= self.best_acc:
+                print(f"BEST VAL ACC AT EPOCH {epoch}")
                 self.save_checkpoint(saved_dict, False, f'{model_name}_epoch_{epoch}.best')
                 self.best_acc = val_acc
 

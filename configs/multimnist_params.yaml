@@ -1,9 +1,9 @@
 task: MultiMNIST
 synthesizer: Summation
 
-batch_size: 54000
-test_batch_size: 10000
-val_batch_size: 6000
+batch_size: 512
+test_batch_size: 100
+val_batch_size: 100
 lr: 0.005
 momentum: 0.9
 decay: 0.0005
@@ -13,7 +13,7 @@ optimizer: SGD
 log_interval: 300
 scheduler: False
 
-poisoning_proportion: 0.5
+poisoning_proportion: 0.8
 backdoor_label: 8
 backdoor: True
 backdoor_dynamic_position: False
@@ -26,12 +26,16 @@ log: True
 tb: False
 
 continuation: True
-max_continuation_iterations: 200
-plot_continuation_on_iteration: 25
-continuation_checkpoints_at: 25
+max_continuation_iterations: 10
+plot_continuation_on_iteration: 2
+continuation_checkpoints_at: 2
+calibration: True
+calibration_iterations: 2000
 stop_at: 0.001
-predictor_steps: 1
-corrector_steps: 1
+predictor_steps: 10
+predictor_lr: 0.0001
+corrector_steps: 100
+corrector_lr: 0.0001
 other_direction: False
 both_directions: True
 

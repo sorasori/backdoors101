@@ -12,6 +12,7 @@ from matplotlib import pyplot as plt
 from prompt_toolkit import prompt
 from torch import nn
 from tqdm import tqdm
+from collections import deque
 
 # noinspection PyUnresolvedReferences
 from dataset.pipa import Annotations  # legacy to correctly load dataset.
@@ -125,8 +126,9 @@ def run_continuation(hlpr: Helper):
     print(f"Loading model...")
     # TODO: find better model
     model_path ="saved_models/good_starting_model/linear_model_cuda/model_last.pt.tar_epoch_149.best"
-    model = SimplerNet(100).to(device="cuda")
-    checkpoint = torch.load(model_path)    
+    model = SimplerNet(100).to(device='cpu')
+    #model = SimplerNet(100).to(device='cpu')
+    checkpoint = torch.load(model_path, map_location='cpu')    
     model.load_state_dict(checkpoint['state_dict'])
     hlpr.task.model = model
 
@@ -262,15 +264,12 @@ def run_continuation(hlpr: Helper):
 def run_continuation_both_directions(hlpr: Helper):
     # 1. Run pretrained model
     print(f"Loading model...")
-
-    # TODO: find better model
-    model_path = "saved_models/good_starting_model/linear_model_cuda/model_last.pt.tar_epoch_149.best"
-    model = SimplerNet(100).to(device="cuda")
+    model_path = "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/saved_models/model_MultiMNISTVanilla_Jul.04_19.27.47_multimnist/epoch_100/model_last.pt.tar_epoch_100.best"
+    model = SimpleNet(100).to(device="cuda")
     checkpoint = torch.load(model_path)
     model.load_state_dict(checkpoint['state_dict'])
     hlpr.task.model = model
 
-    from collections import deque
     maintask_losses = deque('')
     backdoor_losses = deque('')
     maintask_acc = deque('')
@@ -286,17 +285,20 @@ def run_continuation_both_directions(hlpr: Helper):
     initial_model_weights = deque('')
     l1_norms = deque('')
 
-    predictor_lr = 0.0001
-    corrector_lr = 0.0001
+    predictor_lr = hlpr.params.predictor_lr
+    corrector_lr = hlpr.params.corrector_lr
 
     corrector_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=corrector_lr, momentum=0.9)
     predictor_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=predictor_lr, momentum=0.9)
 
     # 1.5. Calibrate Continuation
     print(f"Calibrating continuation...")
-    for calibration_step in range(30):
-        train_step(hlpr, calibration_step, hlpr.task.model, corrector_optimizer,
-                   hlpr.task.train_loader, attack=True, predictor_step=False)
+    if hlpr.params.calibration:
+        for cal_step in range(hlpr.params.calibration_iterations):
+            train_step(hlpr, cal_step, hlpr.task.model, corrector_optimizer,
+                    hlpr.task.train_loader, attack=True, predictor_step=False)
+        print(f"Checkpointing calibrated model under {model_path}")
+        hlpr.save_model(model, -1)
 
     initial_model = copy.deepcopy(hlpr.task.model)
     initial_model_weights = [params.clone() for params in model.parameters()]
@@ -458,7 +460,7 @@ def  plot_results(hlpr,
                  weight_distances,
                  distances_to_initial_solution,
                  l1_norms):
-
+    resolution_value = 2000
     f1 = plt.figure(1)
     plt.scatter(maintask_losses, backdoor_losses, )
     plt.scatter(predictor_mt_loss, predictor_bd_loss, )
@@ -469,10 +471,9 @@ def  plot_results(hlpr,
     plt.title(f"{hlpr.params.max_continuation_iterations} iterations,\
               {hlpr.params.predictor_steps} predictor steps and lr = {predictor_lr}, \
               {hlpr.params.corrector_steps} corrector steps and lr = {corrector_lr}")
-    # plt.plot(maintask_losses, backdoor_losses)
-    # plt.plot(corr_mt_loss, corr_bd_loss)
     plt.grid()
-    plt.savefig(f'{hlpr.params.folder_path}/plot_loss')
+    plt.savefig(f'{hlpr.params.folder_path}/plot_loss', dpi=resolution_value)
+    plt.close()
 
     f2 = plt.figure(2)
     plt.plot(maintask_acc)
@@ -482,30 +483,34 @@ def  plot_results(hlpr,
               {hlpr.params.predictor_steps} predictor steps and lr = {predictor_lr}, \
               {hlpr.params.corrector_steps} corrector steps and lr = {corrector_lr}")
     plt.grid()
-    plt.savefig(f'{hlpr.params.folder_path}/plot_accuracy')
+    plt.savefig(f'{hlpr.params.folder_path}/plot_accuracy', dpi=resolution_value)
+    plt.close()
 
     f3 = plt.figure(3)
     plt.plot(weight_distances)
     plt.ylabel("pairwise euclidean weight distances")
     plt.xlabel("continuation steps")
     plt.grid()
-    plt.savefig(f'{hlpr.params.folder_path}/plot_weights')
+    plt.savefig(f'{hlpr.params.folder_path}/plot_weights', dpi=resolution_value)
+    plt.close()
 
     f4 = plt.figure(4)
     plt.plot(distances_to_initial_solution)
     plt.ylabel("distance to initial model")
     plt.xlabel("continuation steps")
     plt.grid()
-    plt.savefig(f'{hlpr.params.folder_path}/plot_total_weight_distance')
+    plt.savefig(f'{hlpr.params.folder_path}/plot_total_weight_distance', dpi=resolution_value)
     plt.show()
+    plt.close()
 
     f5 = plt.figure(5)
     plt.plot(l1_norms)
     plt.ylabel("l1 norm")
     plt.xlabel("continuation steps")
     plt.grid()
-    plt.savefig(f'{hlpr.params.folder_path}/plot_l1_norm')
+    plt.savefig(f'{hlpr.params.folder_path}/plot_l1_norm', dpi=resolution_value)
     plt.show()
+    plt.close()
 
 def run_fl_round(hlpr, epoch):
     global_model = hlpr.task.model
@@ -577,7 +582,7 @@ if __name__ == '__main__':
 
     SWIPE_THROUGH_PARAMETERS = False
     if SWIPE_THROUGH_PARAMETERS:
-        swipe_parameters(lrs=[0.5, 0.1, 0.05, 0.01, 0.005, 0.001, 0.0005, 0.0001])
+        swipe_parameters(lrs=[0.005, 0.001, 0.0005, 0.0001])
         exit()
 
     helper = Helper(params)

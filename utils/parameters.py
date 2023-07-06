@@ -110,9 +110,13 @@ class Params:
     continuation_checkpoints_at: int = 10
     stop_at: float = 1e-3
     predictor_steps: int = 10
+    predictor_lr: float = 0.0001
     corrector_steps: int = 100
+    corrector_lr: float = 0.0001
     other_direction: bool = False
     both_directions: bool = False
+    calibration: bool = False
+    calibration_iterations: bool = False
 
     # FL params
     fl: bool = False
