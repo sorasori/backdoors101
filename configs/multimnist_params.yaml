@@ -30,14 +30,14 @@ max_continuation_iterations: 10
 plot_continuation_on_iteration: 2
 continuation_checkpoints_at: 2
 calibration: True
-calibration_iterations: 2000
+calibration_iterations: 1000
 stop_at: 0.001
 predictor_steps: 10
 predictor_lr: 0.0001
 corrector_steps: 100
 corrector_lr: 0.0001
 other_direction: False
-both_directions: True
+both_directions: False
 
 transform_train: True
 

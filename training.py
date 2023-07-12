@@ -295,6 +295,7 @@ def run_continuation_both_directions(hlpr: Helper):
     print(f"Calibrating continuation...")
     if hlpr.params.calibration:
         for cal_step in range(hlpr.params.calibration_iterations):
+            print(f"Calibration iteration: {cal_step}")
             train_step(hlpr, cal_step, hlpr.task.model, corrector_optimizer,
                     hlpr.task.train_loader, attack=True, predictor_step=False)
         print(f"Checkpointing calibrated model under {model_path}")
@@ -316,8 +317,8 @@ def run_continuation_both_directions(hlpr: Helper):
             model = initial_model
             hlpr.task.model = initial_model
             backwards = not backwards
-            predictor_lr = 0.0001
-            corrector_lr = 0.0001
+            predictor_lr = 0.00005
+            corrector_lr = 0.00005
             corrector_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=corrector_lr, momentum=0.9)
             predictor_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=predictor_lr, momentum=0.9)
 
