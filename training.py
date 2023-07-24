@@ -36,7 +36,6 @@ def train_step(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None,
         model.zero_grad()
         loss = hlpr.attack.compute_blind_loss(model, criterion, batch, attack, predictor_step=predictor_step)
 
-        # TODO: ggf. backward pass reduzieren
         loss.backward()
         optimizer.step()
 
@@ -56,7 +55,6 @@ def train(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None):
         # TODO: ggf. backward pass reduzieren
         loss.backward()
         optimizer.step()
-
         hlpr.report_training_losses_scales(i, epoch)
         if i == hlpr.params.max_batch_id:
             break
@@ -264,7 +262,7 @@ def run_continuation(hlpr: Helper):
 def run_continuation_both_directions(hlpr: Helper):
     # 1. Run pretrained model
     print(f"Loading model...")
-    model_path = "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/saved_models/model_MultiMNISTVanilla_Jul.04_19.27.47_multimnist/epoch_100/model_last.pt.tar_epoch_100.best"
+    model_path = "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/bd_model_single_pixel.tar"
     model = SimpleNet(100).to(device="cuda")
     checkpoint = torch.load(model_path)
     model.load_state_dict(checkpoint['state_dict'])
@@ -317,8 +315,6 @@ def run_continuation_both_directions(hlpr: Helper):
             model = initial_model
             hlpr.task.model = initial_model
             backwards = not backwards
-            predictor_lr = 0.00005
-            corrector_lr = 0.00005
             corrector_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=corrector_lr, momentum=0.9)
             predictor_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=predictor_lr, momentum=0.9)
 
@@ -333,7 +329,7 @@ def run_continuation_both_directions(hlpr: Helper):
             else:
                 train_step(hlpr, predictor_step, hlpr.task.model, predictor_optimizer,
                            hlpr.task.train_loader, attack=True, predictor_step=True)
-
+            
         collect_loss_and_accuracy(hlpr, predictor_mt_loss, predictor_mt_acc, predictor_bd_loss, predictor_bd_acc, backwards)
 
         # Corrector loop
