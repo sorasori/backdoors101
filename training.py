@@ -209,11 +209,19 @@ def run_continuation(hlpr: Helper):
     backdoor_losses = deque('')
     maintask_acc = deque('')
     backdoor_acc = deque('')
-
     predictor_mt_loss = deque('')
     predictor_bd_loss = deque('')
     predictor_mt_acc = deque('')
     predictor_bd_acc = deque('')
+
+    tr_maintask_losses = deque('')
+    tr_backdoor_losses = deque('')
+    tr_maintask_acc = deque('')
+    tr_backdoor_acc = deque('')
+    tr_predictor_mt_loss = deque('')
+    tr_predictor_bd_loss = deque('')
+    tr_predictor_mt_acc = deque('')
+    tr_predictor_bd_acc = deque('')
 
     distances_to_initial_solution = deque('')
     weight_distances = deque('')
@@ -240,6 +248,7 @@ def run_continuation(hlpr: Helper):
     initial_model_weights = [params.clone() for params in model.parameters()]
 
     collect_loss_and_accuracy(hlpr, maintask_losses, maintask_acc, backdoor_losses, backdoor_acc)
+    collect_loss_and_accuracy(hlpr, tr_maintask_losses, tr_maintask_acc, tr_backdoor_losses, tr_backdoor_acc, training=True)
     collect_regularization(initial_model_weights, l1_norms)
 
     # 2. Start Continuation
@@ -268,6 +277,8 @@ def run_continuation(hlpr: Helper):
                            hlpr.task.train_loader, attack=True, predictor_step=True)
             
         collect_loss_and_accuracy(hlpr, predictor_mt_loss, predictor_mt_acc, predictor_bd_loss, predictor_bd_acc, backwards)
+        collect_loss_and_accuracy(hlpr, tr_maintask_losses, tr_maintask_acc, tr_backdoor_losses, tr_backdoor_acc,
+                                  training=True)
 
         # Corrector loop
         for corrector_step in range(hlpr.params.corrector_steps):
@@ -277,6 +288,8 @@ def run_continuation(hlpr: Helper):
         next_model_weights = [params.clone() for params in model.parameters()]
 
         collect_loss_and_accuracy(hlpr, maintask_losses, maintask_acc, backdoor_losses, backdoor_acc, backwards)
+        collect_loss_and_accuracy(hlpr, tr_maintask_losses, tr_maintask_acc, tr_backdoor_losses, tr_backdoor_acc,
+                                  training=True)
         collect_regularization(next_model_weights, l1_norms)
         collect_distance(initial_model_weights, next_model_weights, distances_to_initial_solution, backwards)
         collect_distance(previous_model_weights, next_model_weights, weight_distances, backwards)
@@ -315,9 +328,10 @@ def run_continuation(hlpr: Helper):
 def collect_loss_and_accuracy(hlpr,
                               maintask_losses, maintask_acc,
                               backdoor_losses, backdoor_acc,
-                              backwards: bool = False):
-    _l, _acc = test(hlpr, 0, backdoor=False, return_loss=True)
-    _l_bd, _acc_bd = test(hlpr, 0, backdoor=True, return_loss=True)
+                              backwards: bool = False,
+                              training: bool = False):
+    _l, _acc = test(hlpr, 0, backdoor=False, return_loss=True, validation=False, training=training)
+    _l_bd, _acc_bd = test(hlpr, 0, backdoor=True, return_loss=True, validation=False, training=training)
 
     if not backwards:
         maintask_losses.append(_l)
