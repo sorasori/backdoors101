@@ -13,6 +13,12 @@ https://medium.com/@stepanulyanin/implementing-grad-cam-in-pytorch-ea0937c31e82
     def __init__(self):
         super().__init__()
         self.gradient = None
+        self.forward_passes = 0
+        self.backward_passes = 0
+
+    def reset_passes(self):
+        self.forward_passes = 0
+        self.backward_passes = 0
 
     def activations_hook(self, grad):
         self.gradient = grad

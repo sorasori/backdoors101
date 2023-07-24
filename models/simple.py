@@ -11,6 +11,15 @@ class SimpleNet(Model):
         self.conv2 = nn.Conv2d(20, 50, 5, 1)
         self.fc1 = nn.Linear(4 * 4 * 50, 500)
         self.fc2 = nn.Linear(500, num_classes)
+        self.forward_passes = 0
+        self.backward_passes = 0
+    
+    def reset_forward_backward_passes(self):
+        self.forward_passes = 0
+        self.backward_passes = 0
+
+    def return_passes(self):
+        return self.forward_passes, self.backward_passes
 
     def features(self, x):
         x = F.relu(self.conv1(x))
@@ -20,6 +29,7 @@ class SimpleNet(Model):
         return x
 
     def forward(self, x, latent=False):
+        self.forward_passes += 1
         x = F.relu(self.conv1(x))
         x = F.max_pool2d(x, 2, 2)
         x = F.relu(self.conv2(x))
@@ -30,6 +40,7 @@ class SimpleNet(Model):
         x = F.relu(self.fc1(x))
         x = self.fc2(x)
         out = F.log_softmax(x, dim=1)
+        self.forward_passes += 1
         if latent:
             return out, x
         else:

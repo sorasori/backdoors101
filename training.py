@@ -35,9 +35,16 @@ def train_step(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None,
         model.zero_grad()
         loss = hlpr.attack.compute_blind_loss(model, criterion, batch, attack, predictor_step=predictor_step)
 
+        model.backward_passes += 1
         loss.backward()
         optimizer.step()
         return loss
+
+# TODO: implement this
+#    t = time.perf_counter()
+#    record_time(params, t, 'forward')
+#    t = time.perf_counter()
+#    record_time(params, t, 'backward')
 
 
 def train(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None):
@@ -199,7 +206,7 @@ def fl_run(hlpr: Helper):
 def run_continuation(hlpr: Helper):
     # 1. Run pretrained model
     print(f"Loading model...")
-    model_path = "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/bd_model_single_pixel.tar"
+    model_path = hlpr.params.continuation_model_path
     model = SimpleNet(100).to(device="cuda")
     checkpoint = torch.load(model_path)
     model.load_state_dict(checkpoint['state_dict'])
@@ -214,14 +221,15 @@ def run_continuation(hlpr: Helper):
     predictor_mt_acc = deque('')
     predictor_bd_acc = deque('')
 
-    tr_maintask_losses = deque('')
-    tr_backdoor_losses = deque('')
-    tr_maintask_acc = deque('')
-    tr_backdoor_acc = deque('')
-    tr_predictor_mt_loss = deque('')
-    tr_predictor_bd_loss = deque('')
-    tr_predictor_mt_acc = deque('')
-    tr_predictor_bd_acc = deque('')
+    if hlpr.params.track_training:
+        tr_maintask_losses = deque('')
+        tr_backdoor_losses = deque('')
+        tr_maintask_acc = deque('')
+        tr_backdoor_acc = deque('')
+        tr_predictor_mt_loss = deque('')
+        tr_predictor_bd_loss = deque('')
+        tr_predictor_mt_acc = deque('')
+        tr_predictor_bd_acc = deque('')
 
     distances_to_initial_solution = deque('')
     weight_distances = deque('')
@@ -233,6 +241,13 @@ def run_continuation(hlpr: Helper):
 
     corrector_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=corrector_lr, momentum=0.9)
     predictor_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=predictor_lr, momentum=0.9)
+
+    forward_passes_per_pred = 0
+    forward_passes_per_pred = 0
+    backward_passes_per_corr = 0
+    backward_passes_per_corr = 0
+    sum_forward_passes = 0
+    sum_backward_passes = 0
 
     # 1.5. Calibrate Continuation
     print(f"Calibrating continuation...")
@@ -248,13 +263,16 @@ def run_continuation(hlpr: Helper):
     initial_model_weights = [params.clone() for params in model.parameters()]
 
     collect_loss_and_accuracy(hlpr, maintask_losses, maintask_acc, backdoor_losses, backdoor_acc)
-    collect_loss_and_accuracy(hlpr, tr_maintask_losses, tr_maintask_acc, tr_backdoor_losses, tr_backdoor_acc, training=True)
+    if hlpr.params.track_training:
+        collect_loss_and_accuracy(hlpr, tr_maintask_losses, tr_maintask_acc, tr_backdoor_losses, tr_backdoor_acc, training=True)
     collect_regularization(initial_model_weights, l1_norms)
 
     # 2. Start Continuation
     print("Entering continuation loop!!!")
     backwards = hlpr.params.other_direction
+    start_time = time.time()
     for continuation_iteration in range(hlpr.params.max_continuation_iterations):
+        print(f"Entering continuation iteration {continuation_iteration} at {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
         if continuation_iteration > 1 and hlpr.params.max_continuation_iterations / continuation_iteration == 2 \
                 and hlpr.params.both_directions:
             print(f"Going into other direction at iteration {continuation_iteration}")
@@ -263,11 +281,11 @@ def run_continuation(hlpr: Helper):
             backwards = not backwards
             corrector_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=corrector_lr, momentum=0.9)
             predictor_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=predictor_lr, momentum=0.9)
-
         previous_model_weights = [p.clone() for p in model.parameters()]
 
         print(f"Entering continuation iteration {continuation_iteration}")
         # Predictor loop
+        model.reset_passes()
         for predictor_step in range(hlpr.params.predictor_steps):
             if backwards:
                 train_step(hlpr, predictor_step, hlpr.task.model, predictor_optimizer,
@@ -275,21 +293,35 @@ def run_continuation(hlpr: Helper):
             else:
                 train_step(hlpr, predictor_step, hlpr.task.model, predictor_optimizer,
                            hlpr.task.train_loader, attack=True, predictor_step=True)
-            
+        print(f"Finished predictor step at {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
+        if continuation_iteration == 1:
+            forward_passes_per_pred = model.forward_passes
+            backward_passes_per_pred = model.backward_passes
+        sum_forward_passes += model.forward_passes
+        sum_backward_passes += model.backward_passes
+
         collect_loss_and_accuracy(hlpr, predictor_mt_loss, predictor_mt_acc, predictor_bd_loss, predictor_bd_acc, backwards)
-        collect_loss_and_accuracy(hlpr, tr_maintask_losses, tr_maintask_acc, tr_backdoor_losses, tr_backdoor_acc,
-                                  training=True)
+        if hlpr.params.track_training:
+            collect_loss_and_accuracy(hlpr, tr_predictor_mt_loss, tr_predictor_mt_acc, tr_predictor_bd_loss, tr_predictor_bd_acc, backwards, training=True)
 
         # Corrector loop
+        model.reset_passes()
         for corrector_step in range(hlpr.params.corrector_steps):
             train_step(hlpr, corrector_step, hlpr.task.model, corrector_optimizer,
                        hlpr.task.train_loader, attack=True, predictor_step=False)
+        print(f"Finished corrector step at {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
+        if continuation_iteration == 1:
+            forward_passes_per_corr = model.forward_passes
+            backward_passes_per_corr = model.backward_passes
+        sum_forward_passes += model.forward_passes
+        sum_backward_passes += model.backward_passes
 
         next_model_weights = [params.clone() for params in model.parameters()]
 
         collect_loss_and_accuracy(hlpr, maintask_losses, maintask_acc, backdoor_losses, backdoor_acc, backwards)
-        collect_loss_and_accuracy(hlpr, tr_maintask_losses, tr_maintask_acc, tr_backdoor_losses, tr_backdoor_acc,
-                                  training=True)
+        if hlpr.params.track_training:    
+            collect_loss_and_accuracy(hlpr, tr_maintask_losses, tr_maintask_acc, tr_backdoor_losses, tr_backdoor_acc,
+                                    training=True)
         collect_regularization(next_model_weights, l1_norms)
         collect_distance(initial_model_weights, next_model_weights, distances_to_initial_solution, backwards)
         collect_distance(previous_model_weights, next_model_weights, weight_distances, backwards)
@@ -312,6 +344,13 @@ def run_continuation(hlpr: Helper):
             hlpr.save_model(model, continuation_iteration)
 
     # 7. Write down all results
+    print(f"Total forward passes: {sum_forward_passes}")
+    print(f"Total backward passes: {sum_backward_passes}")
+    print(f"Forward passes per predictor step: {forward_passes_per_pred}")
+    print(f"Forward passes per corrector step: {forward_passes_per_corr}")
+    print(f"Backward passes per predictor step: {backward_passes_per_pred}")
+    print(f"Backward passes per corrector step: {backward_passes_per_corr}")
+
     save_continuation_results(helper,
                               maintask_losses,
                               maintask_acc,
@@ -324,14 +363,25 @@ def run_continuation(hlpr: Helper):
                               distances_to_initial_solution,
                               weight_distances,
                               l1_norms)
+    if hlpr.params.track_training:
+        save_training_continuation_results(helper,
+                              tr_maintask_losses,
+                              tr_maintask_acc,
+                              tr_backdoor_losses,
+                              tr_backdoor_acc,
+                              tr_predictor_mt_loss,
+                              tr_predictor_mt_acc,
+                              tr_predictor_bd_loss,
+                              tr_predictor_bd_acc,)    
+
 
 def collect_loss_and_accuracy(hlpr,
                               maintask_losses, maintask_acc,
                               backdoor_losses, backdoor_acc,
                               backwards: bool = False,
                               training: bool = False):
-    _l, _acc = test(hlpr, 0, backdoor=False, return_loss=True, validation=False, training=training)
-    _l_bd, _acc_bd = test(hlpr, 0, backdoor=True, return_loss=True, validation=False, training=training)
+    _l, _acc = test(hlpr, 0, backdoor=False, return_loss=True, validation=False, train=training)
+    _l_bd, _acc_bd = test(hlpr, 0, backdoor=True, return_loss=True, validation=False, train=training)
 
     if not backwards:
         maintask_losses.append(_l)
@@ -376,9 +426,6 @@ def save_continuation_results(helper,
                               distance_initial_sol, pairwise_distances,
                               l1_norms):
     import csv
-    # dd/mm/YY H:M:S
-    root = path.abspath('..')
-    dt_string = datetime.now().strftime("%d-%m-%Y--%H-%M-%S")
     output_file_path = f"{helper.params.folder_path}/losses.csv"
 
     with open(output_file_path, mode='w', newline='') as file:
@@ -398,6 +445,31 @@ def save_continuation_results(helper,
                               distance_initial_sol, pairwise_distances,
                               l1_norms))
 
+    logger.info(f"Saved csv results to {output_file_path}")
+
+
+def save_training_continuation_results(helper,
+                              tr_maintask_losses,
+                              tr_maintask_acc,
+                              tr_backdoor_losses,
+                              tr_backdoor_acc,
+                              tr_predictor_mt_loss,
+                              tr_predictor_mt_acc,
+                              tr_predictor_bd_loss,
+                              tr_predictor_bd_acc,):
+    import csv
+    output_file_path = f"{helper.params.folder_path}/training_losses.csv"
+    with open(output_file_path, mode='w', newline='') as file:
+        # Create a CSV writer object
+        writer = csv.writer(file)
+        writer.writerow(['Main-Task Loss', 'Main Task Accuracy',
+                         'Backdoor Loss', 'Backdoor Accuracy',
+                         'Predictor Main Task Loss', 'Predictor Main Task Accuracy',
+                         'Predictor Backdoor Loss', 'Predictor Backdoor Accuracy'])
+        writer.writerows(zip(tr_maintask_losses, tr_maintask_acc,
+                              tr_backdoor_losses, tr_backdoor_acc,
+                              tr_predictor_mt_loss, tr_predictor_mt_acc,
+                              tr_predictor_bd_loss, tr_predictor_bd_acc))
     logger.info(f"Saved csv results to {output_file_path}")
 
 def  plot_results(hlpr,

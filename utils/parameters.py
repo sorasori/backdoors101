@@ -117,6 +117,9 @@ class Params:
     both_directions: bool = False
     calibration: bool = False
     calibration_iterations: bool = False
+    track_training: bool = False
+    continuation_model_path: str = ""
+    count_passes: bool = False
 
     # FL params
     fl: bool = False

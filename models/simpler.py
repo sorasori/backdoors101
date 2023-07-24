@@ -11,6 +11,7 @@ class SimplerNet(Model):
         self.fc2 = nn.Linear(500, num_classes)
 
     def forward(self, x, latent=False):
+        self.forward_passes += 1
         x = x.reshape([-1, 784])
         x = F.relu(self.fc1(x))
         x = self.fc2(x)

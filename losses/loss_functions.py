@@ -83,6 +83,7 @@ def compute_normal_loss(params, model, criterion, inputs,
         loss = loss.mean()
 
     if grads:
+        model.backward_passes += 1
         t = time.perf_counter()
         grads = list(torch.autograd.grad(loss.mean(),
                                          [x for x in model.parameters() if
@@ -261,6 +262,7 @@ def norm_loss(params, model, grads=None):
 
 def get_grads(params, model, loss):
     t = time.perf_counter()
+    model.backward_passes += 1
     grads = list(torch.autograd.grad(loss.mean(),
                                      [x for x in model.parameters() if
                                       x.requires_grad],
