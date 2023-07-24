@@ -25,7 +25,6 @@ from utils.utils import *
 
 logger = logging.getLogger('logger')
 
-
 def train_step(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None, predictor_step=False):
     criterion = hlpr.task.criterion
     model.train()
@@ -38,9 +37,6 @@ def train_step(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None,
 
         loss.backward()
         optimizer.step()
-
-        # TODO: change
-        # hlpr.report_training_losses_scales(i, epoch)
         return loss
 
 
@@ -52,7 +48,6 @@ def train(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None):
         model.zero_grad()
         loss = hlpr.attack.compute_blind_loss(model, criterion, batch, attack=hlpr.params.backdoor)
         
-        # TODO: ggf. backward pass reduzieren
         loss.backward()
         optimizer.step()
         hlpr.report_training_losses_scales(i, epoch)
@@ -61,12 +56,14 @@ def train(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None):
     return
 
 
-def test(hlpr: Helper, epoch, backdoor=False, return_loss=True, validation=False):
+def test(hlpr: Helper, epoch, backdoor=False, return_loss=True, validation=False, train=False):
     model = hlpr.task.model
     model.eval()
     hlpr.task.reset_metrics()
     if validation:
         loader = hlpr.task.val_loader
+    elif train:
+        loader = hlpr.task.train_loader
     else:
         loader = hlpr.task.test_loader
     with torch.no_grad():
@@ -95,20 +92,99 @@ def test(hlpr: Helper, epoch, backdoor=False, return_loss=True, validation=False
 
 
 def run(hlpr, attack=None):
-    acc = test(hlpr, 0, backdoor=False)
-    for epoch in range(hlpr.params.start_epoch,
+
+    train_accs_mt = []
+    train_losses_mt = []
+    val_accs_mt = []
+    val_losses_mt = []
+
+    train_accs_bd = []
+    train_losses_bd = []
+    val_accs_bd = []
+    val_losses_bd = []
+
+    val_loss, val_acc = test(hlpr, 0, backdoor=False, return_loss=True, validation=True)
+    val_accs_mt.append(val_acc)
+    val_losses_mt.append(val_loss)
+
+    train_loss, train_acc = test(hlpr, 0, backdoor=False, return_loss=True, validation=False, train=True)
+    train_accs_mt.append(train_acc)
+    train_losses_mt.append(train_loss)
+
+    val_loss_bd, val_acc_bd,  = test(hlpr, 0, backdoor=True, return_loss=True, validation=True)
+    val_accs_bd.append(val_acc_bd)
+    val_losses_bd.append(val_loss_bd)
+
+    train_loss_bd, train_acc_bd = test(hlpr, 0, backdoor=True, return_loss=True, validation=False, train=True)
+    train_accs_bd.append(train_acc_bd)
+    train_losses_bd.append(train_loss_bd)
+
+    for epoch in range(1,
                        hlpr.params.epochs + 1):
         train(hlpr, epoch, hlpr.task.model, hlpr.task.optimizer,
               hlpr.task.train_loader, attack)
-        acc = test(hlpr, epoch, backdoor=False, return_loss=False, validation=True)
-        test(hlpr, epoch, backdoor=True, validation=True)
-        hlpr.save_model(hlpr.task.model, epoch, acc)
+
+        val_loss, val_acc = test(hlpr, epoch, backdoor=False, return_loss=True, validation=True)
+        val_accs_mt.append(val_acc)
+        val_losses_mt.append(val_loss)
+
+        train_loss, train_acc = test(hlpr, epoch, backdoor=False, return_loss=True, validation=False, train=True)
+        train_accs_mt.append(train_acc)
+        train_losses_mt.append(train_loss)
+
+        val_loss_bd, val_acc_bd, = test(hlpr, epoch, backdoor=True, return_loss=True, validation=True)
+        val_accs_bd.append(val_acc_bd)
+        val_losses_bd.append(val_loss_bd)
+
+        train_loss_bd, train_acc_bd = test(hlpr, epoch, backdoor=True, return_loss=True, validation=False, train=True)
+        train_accs_bd.append(train_acc_bd)
+        train_losses_bd.append(train_loss_bd)
+
+        # test(hlpr, epoch, backdoor=True, return_loss=False, validation=True)
+        hlpr.save_model(hlpr.task.model, epoch, val_acc)
         if hlpr.task.scheduler is not None:
             hlpr.task.scheduler.step(epoch)
+    
     print("#####################")
     print(f"Final test accuracy:")
     acc = test(hlpr, epoch, backdoor=False, return_loss=False, validation=False)
     test(hlpr, epoch, backdoor=True, validation=False)
+
+    write_training_data_to_csv(hlpr.params.epochs,
+                               train_losses_mt, train_accs_mt,
+                               train_losses_bd, train_accs_bd,
+                               val_losses_mt, val_accs_mt,
+                               val_losses_bd, val_accs_bd
+                               )
+
+
+def write_training_data_to_csv(epochs,
+                               train_losses_mt, train_accs_mt,
+                               train_losses_bd, train_accs_bd, 
+                               val_losses_mt, val_accs_mt,
+                               val_losses_bd, val_accs_bd) -> None:
+    import csv
+    output_file_path = f"{helper.params.folder_path}/training_losses.csv"
+
+    with open(output_file_path, mode='w', newline='') as file:
+        # Create a CSV writer object
+        writer = csv.writer(file)
+        writer.writerow(["epoch",
+                         'Main Task Training Loss', 'Main Task Training Accuracy',
+                         'Backdoor Training Loss', 'Backdoor Training Accuracy',
+                         'Main Task Validation Loss', 'Main Task Validation Accuracy',
+                         'Backdoor Validation Loss', 'Backdoor Validation Accuracy'
+                         ])
+
+        writer.writerows(zip(range(0, epochs),
+                               train_losses_mt, train_accs_mt,
+                               train_losses_bd, train_accs_bd, 
+                               val_losses_mt, val_accs_mt,
+                               val_losses_bd, val_accs_bd))
+
+    logger.info(f"Saved csv results to {output_file_path}")
+
+    
 
 def fl_run(hlpr: Helper):
     for epoch in range(hlpr.params.start_epoch,
@@ -119,147 +195,8 @@ def fl_run(hlpr: Helper):
 
         hlpr.save_model(hlpr.task.model, epoch, metric)
 
+
 def run_continuation(hlpr: Helper):
-    # 1. Run pretrained model
-    print(f"Loading model...")
-    # TODO: find better model
-    model_path ="saved_models/good_starting_model/linear_model_cuda/model_last.pt.tar_epoch_149.best"
-    model = SimplerNet(100).to(device='cpu')
-    #model = SimplerNet(100).to(device='cpu')
-    checkpoint = torch.load(model_path, map_location='cpu')    
-    model.load_state_dict(checkpoint['state_dict'])
-    hlpr.task.model = model
-
-    # 2. Start Continuation procedure
-    maintask_losses = []
-    backdoor_losses = []
-    maintask_acc = []
-    backdoor_acc = []
-
-    l1_norms = []
-
-    predictor_lr = 0.0005
-    corrector_lr = 0.0005
-
-    predictor_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=predictor_lr, momentum=0.9)
-    corrector_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=corrector_lr, momentum=0.9)
-
-    predictor_mt_loss = []
-    predictor_bd_loss = []
-    predictor_mt_acc = []
-    predictor_bd_acc = []
-
-    distances_to_initial_solution = []
-    weight_distances = []
-    initial_model_weights = []
-
-    # 1.5. Calibrate Continuation
-    print(f"Calibrating continuation...")
-    for calibration_step in range(20):
-        train_step(hlpr, calibration_step, hlpr.task.model, corrector_optimizer,
-                   hlpr.task.train_loader, attack=True, predictor_step=False)
-
-    _l, _acc = test(hlpr, 0, backdoor=False, return_loss=True)
-    _l_bd, _acc_bd = test(hlpr, 0, backdoor=True, return_loss=True)
-
-    maintask_losses.append(_l)
-    maintask_acc.append(_acc)
-    backdoor_losses.append(_l_bd)
-    backdoor_acc.append(_acc_bd)
-
-    for param in model.parameters():
-        initial_model_weights.append(param.clone())
-
-    regularization_val = l1_norm(initial_model_weights)
-    l1_norms.append(regularization_val)
-
-    print("Entering continuation loop!!!")
-    for continuation_iteration in range(hlpr.params.max_continuation_iterations):
-
-        previous_model_weights = []
-        for param in model.parameters():
-            previous_model_weights.append(param.clone())
-        print(f"Entering continuation iteration {continuation_iteration}")
-        # Predictor loop
-        for predictor_step in range(hlpr.params.predictor_steps):
-            if helper.params.other_direction:
-                train_step(hlpr, predictor_step, hlpr.task.model, predictor_optimizer,
-                    hlpr.task.train_loader, attack=False, predictor_step=True)
-            else:
-                train_step(hlpr, predictor_step, hlpr.task.model, predictor_optimizer,
-                    hlpr.task.train_loader, attack=True, predictor_step=True)
-
-        _l, _acc = test(hlpr, 0, backdoor=False, return_loss=True)
-        _l_bd, _acc_bd = test(hlpr, 0, backdoor=True, return_loss=True)
-        predictor_mt_loss.append(_l)
-        predictor_mt_acc.append(_acc)
-        predictor_bd_loss.append(_l_bd)
-        predictor_bd_acc.append(_acc_bd)
-
-        print(predictor_bd_loss)
-        print(predictor_mt_loss)
-        print(predictor_bd_acc)
-        print(predictor_mt_acc)
-
-        # Corrector loop
-        for corrector_step in range(hlpr.params.corrector_steps):
-            train_step(hlpr, corrector_step, hlpr.task.model, corrector_optimizer,
-                    hlpr.task.train_loader, attack=True, predictor_step=False)
-
-        next_model_weights = []
-        for param in model.parameters():
-            next_model_weights.append(param.clone())
-
-        distance_to_initial = euclidean_distance(initial_model_weights, next_model_weights)
-        weight_distance = euclidean_distance(previous_model_weights, next_model_weights)
-
-        _l, _acc = test(hlpr, 0, backdoor=False, return_loss=True)
-        _l_bd, _acc_bd = test(hlpr, 0, backdoor=True, return_loss=True)
-        regularization_val = l1_norm(next_model_weights)
-
-        maintask_losses.append(_l)
-        maintask_acc.append(_acc)
-        backdoor_losses.append(_l_bd)
-        backdoor_acc.append(_acc_bd)
-        distances_to_initial_solution.append(distance_to_initial)
-        weight_distances.append(weight_distance)
-        l1_norms.append(regularization_val)
-
-        print(f"Pairwise distance after correction step: {weight_distance}")
-        print(f"Weight distance to initial solution: {distance_to_initial}")
-        print(f"Regularization: {regularization_val}")
-
-        # 6. Intermediary plot
-        if continuation_iteration % hlpr.params.plot_continuation_on_iteration == 0 or continuation_iteration==hlpr.params.max_continuation_iterations-1:
-            print(f"Plotting {continuation_iteration} under {model_path}")
-            plot_results(hlpr, predictor_lr, corrector_lr,
-                         maintask_losses, backdoor_losses,
-                         predictor_mt_loss, predictor_bd_loss,
-                         maintask_acc, backdoor_acc,
-                         weight_distances,
-                         distances_to_initial_solution,
-                         l1_norms)
-
-        if continuation_iteration % hlpr.params.continuation_checkpoints_at == 0 or continuation_iteration==hlpr.params.max_continuation_iterations-1:
-            print(f"Checkpointin model {continuation_iteration} under {model_path}")
-            hlpr.save_model(model, continuation_iteration, _acc)
-
-    # 7. Write down all results
-    save_continuation_results(helper,
-                              maintask_losses,
-                              maintask_acc,
-                              backdoor_losses,
-                              backdoor_acc,
-                              predictor_mt_loss,
-                              predictor_mt_acc,
-                              predictor_bd_loss,
-                              predictor_bd_acc,
-                              distances_to_initial_solution,
-                              weight_distances,
-                              l1_norms)
-
-
-def run_continuation_both_directions(hlpr: Helper):
     # 1. Run pretrained model
     print(f"Loading model...")
     model_path = "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/bd_model_single_pixel.tar"
@@ -591,7 +528,7 @@ if __name__ == '__main__':
             fl_run(helper)
         else:
             if helper.params.continuation:
-                run_continuation_both_directions(helper)
+                run_continuation(helper)
             else:
                 run(helper)
     except (KeyboardInterrupt):
