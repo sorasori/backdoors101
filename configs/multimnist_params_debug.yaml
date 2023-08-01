@@ -1,19 +1,21 @@
-task: MultiMNISTVanilla
-synthesizer: SinglePixel
+task: MultiMNIST
+synthesizer: Summation
+continuation_model_path: "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/trained_models/summation_bd_adam.tar"
+distributed: True
 
-batch_size: 256
+batch_size: 512
 test_batch_size: 100
 val_batch_size: 100
-lr: 0.0005
+lr: 0.005
 momentum: 0.9
 decay: 0.0005
-epochs: 100
+epochs: 10
 save_on_epochs: []
 optimizer: SGD
 log_interval: 300
 scheduler: False
 
-poisoning_proportion: 0.2
+poisoning_proportion: 0.8
 backdoor_label: 8
 backdoor: True
 backdoor_dynamic_position: False
@@ -25,19 +27,28 @@ save_model: True
 log: True
 tb: False
 
-continuation: False
-max_continuation_iterations: 100
-save_continuation_on_iteration: 10
+continuation: True
+max_continuation_iterations: 32
+plot_continuation_on_iteration: 2
+continuation_checkpoints_at: 2
+calibration: False
+calibration_iterations: 2000
 stop_at: 0.001
-predictor_steps: 10
-corrector_steps: 10
+predictor_steps: 0
+predictor_lr: 0.0001
+corrector_steps: 512
+corrector_lr: 0.0001
+other_direction: False
+both_directions: False
+track_training: True
+count_passes: True
 
 transform_train: True
 
 
 loss_tasks:
-  - normal
   - backdoor
+  - normal
 #  - neural_cleanse
 #  - sentinet_evasion
 

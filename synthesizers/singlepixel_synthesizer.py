@@ -3,4 +3,4 @@ from synthesizers.pattern_synthesizer import PatternSynthesizer
 
 
 class SinglePixelSynthesizer(PatternSynthesizer):
-    pattern_tensor = torch.tensor([[1.]])
+    pattern_tensor = torch.tensor([[30]])

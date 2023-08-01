@@ -243,8 +243,8 @@ def run_continuation(hlpr: Helper):
     predictor_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=predictor_lr, momentum=0.9)
 
     forward_passes_per_pred = 0
-    forward_passes_per_pred = 0
-    backward_passes_per_corr = 0
+    forward_passes_per_corr = 0
+    backward_passes_per_pred = 0
     backward_passes_per_corr = 0
     sum_forward_passes = 0
     sum_backward_passes = 0
@@ -294,7 +294,7 @@ def run_continuation(hlpr: Helper):
                 train_step(hlpr, predictor_step, hlpr.task.model, predictor_optimizer,
                            hlpr.task.train_loader, attack=True, predictor_step=True)
         print(f"Finished predictor step at {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
-        if continuation_iteration == 1:
+        if continuation_iteration <= 1:
             forward_passes_per_pred = model.forward_passes
             backward_passes_per_pred = model.backward_passes
         sum_forward_passes += model.forward_passes

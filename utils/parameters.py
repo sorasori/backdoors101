@@ -25,6 +25,7 @@ class Params:
     start_epoch: int = 1
     epochs: int = None
     log_interval: int = 1000
+    distributed: bool = False
 
     # model arch is usually defined by the task
     pretrained: bool = False
@@ -146,10 +147,20 @@ class Params:
         if self.log:
             if self.continuation:
                 self.folder_path = f'continuation_runs/run_' \
+                            f'{self.task}_{self.current_time}_{self.name}'
+                if self.distributed:
+                    print("Distributed Continuation Runs!")
+                    import os
+                    self.folder_path = f'continuation_runs/run_{os.environ["SLURM_JOB_ID"]}' \
                                f'{self.task}_{self.current_time}_{self.name}'
                 print(self.folder_path)
             else:
                 self.folder_path = f'saved_models/model_' \
+                               f'{self.task}_{self.current_time}_{self.name}'
+                if self.distributed:
+                    print("Distributed!")
+                    import os
+                    self.folder_path = f'saved_models/model_{os.environ["SLURM_JOB_ID"]}' \
                                f'{self.task}_{self.current_time}_{self.name}'
 
         self.running_losses = defaultdict(list)
