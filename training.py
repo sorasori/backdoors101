@@ -483,9 +483,12 @@ def  plot_results(hlpr,
                  maintask_acc, backdoor_acc,
                  weight_distances,
                  distances_to_initial_solution,
-                 l1_norms):
+                 l1_norms,
+                 model_path=None):
     resolution_value = 2000
     f1 = plt.figure(1)
+    if model_path is None:
+        model_path = hlpr.params.folder_path
     plt.scatter(maintask_losses, backdoor_losses, )
     plt.scatter(predictor_mt_loss, predictor_bd_loss, )
     plt.plot(maintask_losses, backdoor_losses)
@@ -496,7 +499,7 @@ def  plot_results(hlpr,
               {hlpr.params.predictor_steps} predictor steps and lr = {predictor_lr}, \
               {hlpr.params.corrector_steps} corrector steps and lr = {corrector_lr}")
     plt.grid()
-    plt.savefig(f'{hlpr.params.folder_path}/plot_loss', dpi=resolution_value)
+    plt.savefig(f'{model_path}/plot_loss', dpi=resolution_value)
     plt.close()
 
     f2 = plt.figure(2)
@@ -507,7 +510,7 @@ def  plot_results(hlpr,
               {hlpr.params.predictor_steps} predictor steps and lr = {predictor_lr}, \
               {hlpr.params.corrector_steps} corrector steps and lr = {corrector_lr}")
     plt.grid()
-    plt.savefig(f'{hlpr.params.folder_path}/plot_accuracy', dpi=resolution_value)
+    plt.savefig(f'{model_path}/plot_accuracy', dpi=resolution_value)
     plt.close()
 
     f3 = plt.figure(3)
@@ -515,7 +518,7 @@ def  plot_results(hlpr,
     plt.ylabel("pairwise euclidean weight distances")
     plt.xlabel("continuation steps")
     plt.grid()
-    plt.savefig(f'{hlpr.params.folder_path}/plot_weights', dpi=resolution_value)
+    plt.savefig(f'{model_path}/plot_weights', dpi=resolution_value)
     plt.close()
 
     f4 = plt.figure(4)
@@ -523,7 +526,7 @@ def  plot_results(hlpr,
     plt.ylabel("distance to initial model")
     plt.xlabel("continuation steps")
     plt.grid()
-    plt.savefig(f'{hlpr.params.folder_path}/plot_total_weight_distance', dpi=resolution_value)
+    plt.savefig(f'{model_path}/plot_total_weight_distance', dpi=resolution_value)
     plt.show()
     plt.close()
 
@@ -532,7 +535,7 @@ def  plot_results(hlpr,
     plt.ylabel("l1 norm")
     plt.xlabel("continuation steps")
     plt.grid()
-    plt.savefig(f'{hlpr.params.folder_path}/plot_l1_norm', dpi=resolution_value)
+    plt.savefig(f'{model_path}/plot_l1_norm', dpi=resolution_value)
     plt.show()
     plt.close()
 
@@ -642,6 +645,7 @@ def run_scalarization(hlpr: Helper):
     backward_passes_per_iteration = 0
 
     weights_ascending = np.linspace(0, 1, num=hlpr.params.max_continuation_iterations)
+    start_time = time.time()
     for iteration, weight_a in enumerate(weights_ascending):
         print(f"Starting iteration {iteration} with weights {weight_a} and {1-weight_a}")
         model = SimpleNet(100).to(device="cuda")
@@ -654,7 +658,6 @@ def run_scalarization(hlpr: Helper):
         else:
             optimizer = torch.optim.Adam(hlpr.task.model.parameters(), lr=hlpr.params.lr)
 
-        start_time = time.time()
         previous_model_weights = [p.clone() for p in model.parameters()]
 
         # Train
@@ -680,19 +683,20 @@ def run_scalarization(hlpr: Helper):
         # 6. Intermediary plot
         if iteration % hlpr.params.plot_continuation_on_iteration == 0 \
                 or iteration == hlpr.params.max_continuation_iterations - 1:
-            print(f"Plotting {iteration} under {model_path}")
+            print(f"Plotting {iteration} under {model_path}/{iteration}")
             plot_results(hlpr, hlpr.params.lr, hlpr.params.lr,
                         maintask_losses, backdoor_losses,
                         maintask_losses, backdoor_losses,
                         maintask_acc, backdoor_acc,
                         weight_distances,
                         distances_to_initial_solution,
-                        l1_norms)
+                        l1_norms,
+                        )
 
         if iteration % hlpr.params.continuation_checkpoints_at == 0 \
                 or iteration == hlpr.params.max_continuation_iterations - 1:
             print(f"Checkpointin model {iteration} under {model_path}")
-            hlpr.save_model(model, iteration)
+            hlpr.save_model(model, iteration, path=f"{model_path}/{iteration}")
 
         # 7. Write down all results
         print(f"Forward passes per iteration: {forward_passes_per_iteration}")
