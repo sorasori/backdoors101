@@ -591,20 +591,12 @@ def swipe_parameters(lrs):
 
 def scalar_loss_fn(weights, loss, out_batch, target_batch, attack_portion):
     res = 0
-    #print(batch.inputs[:attack_portion, :, :, :].shape)
-    #print(batch.labels[:attack_portion].shape)
-    #print(loss(batch.inputs[:attack_portion, :, :, :], batch.labels[:attack_portion]))
-    #clean_batch = Batch(batch.inputs[:attack_portion, :, :, :], batch.labels[:attack_portion])
-    #clean_batch = Batch(batch.batch.inputs[attack_portion:, :, :, :], batch.labels[attack_portion:])
-
-    print(torch.argmax(out_batch[:attack_portion], axis=1))
-
-    res += weights[0] * loss(torch.argmax(out_batch[:attack_portion], axis=1), target_batch.labels[:attack_portion])
-    res += weights[1] * loss(torch.argmax(out_batch[attack_portion:], axis=1), target_batch.labels[attack_portion:])
+    res += weights[0] * loss(out_batch[:attack_portion], target_batch.labels[:attack_portion])
+    res += weights[1] * loss(out_batch[attack_portion:], target_batch.labels[attack_portion:])
     return res
 
 def train_scalarized(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None, weights=[0.5, 0.5]):
-    loss_f = nn.CrossEntropyLoss(reduction='none')
+    loss_f = nn.CrossEntropyLoss(reduction='mean')
     model.train()
     for i, data in tqdm(enumerate(train_loader)):
         batch = hlpr.task.get_batch(i, data)
@@ -619,7 +611,6 @@ def train_scalarized(hlpr: Helper, epoch, model, optimizer, train_loader, attack
         hlpr.synthesizer.synthesize_labels(batch=back_batch, attack_portion=attack_portion)
 
         outputs = model(back_batch.inputs)
-        print(outputs.shape)
 
         loss = scalar_loss_fn(weights, loss_f, outputs, back_batch, attack_portion)
         loss.backward()
@@ -650,10 +641,9 @@ def run_scalarization(hlpr: Helper):
     forward_passes_per_iteration = 0
     backward_passes_per_iteration = 0
 
-    #scalarization_step_size = 1/hlpr.params.max_continuation_iterations
-    #weights_ascending = range(0, 1+scalarization_step_size, scalarization_step_size)
     weights_ascending = np.linspace(0, 1, num=hlpr.params.max_continuation_iterations)
     for iteration, weight_a in enumerate(weights_ascending):
+        print(f"Starting iteration {iteration} with weights {weight_a} and {1-weight_a}")
         model = SimpleNet(100).to(device="cuda")
         hlpr.task.model = model
         if iteration == 0:
@@ -669,9 +659,9 @@ def run_scalarization(hlpr: Helper):
 
         # Train
         weights = [float(weight_a), float(1-weight_a)]
-        train_scalarized(hlpr, iteration, model, optimizer, hlpr.task.train_loader, attack=True, weights=weights)
+        for epoch in range(hlpr.params.epochs):
+            train_scalarized(hlpr, epoch, model, optimizer, hlpr.task.train_loader, attack=True, weights=weights)
         
-        model.reset_passes()
         print(f"Finished training iteration {iteration} at {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
         if iteration == 0:
             forward_passes_per_iteration = model.forward_passes
@@ -708,28 +698,28 @@ def run_scalarization(hlpr: Helper):
         print(f"Forward passes per iteration: {forward_passes_per_iteration}")
         print(f"Backward passes per iteration step: {backward_passes_per_iteration}")
 
-        save_continuation_results(helper,
-                                maintask_losses,
-                                maintask_acc,
-                                backdoor_losses,
-                                backdoor_acc,
-                                maintask_losses,
-                                maintask_acc,
-                                backdoor_losses,
-                                backdoor_acc,
-                                distances_to_initial_solution,
-                                weight_distances,
-                                l1_norms)
-        if hlpr.params.track_training:
-            save_training_continuation_results(helper,
-                                tr_maintask_losses,
-                                tr_maintask_acc,
-                                tr_backdoor_losses,
-                                tr_backdoor_acc,
-                                tr_maintask_losses,
-                                tr_maintask_acc,
-                                tr_backdoor_losses,
-                                tr_backdoor_acc,)    
+    save_continuation_results(helper,
+                            maintask_losses,
+                            maintask_acc,
+                            backdoor_losses,
+                            backdoor_acc,
+                            maintask_losses,
+                            maintask_acc,
+                            backdoor_losses,
+                            backdoor_acc,
+                            distances_to_initial_solution,
+                            weight_distances,
+                            l1_norms)
+    if hlpr.params.track_training:
+        save_training_continuation_results(helper,
+                            tr_maintask_losses,
+                            tr_maintask_acc,
+                            tr_backdoor_losses,
+                            tr_backdoor_acc,
+                            tr_maintask_losses,
+                            tr_maintask_acc,
+                            tr_backdoor_losses,
+                            tr_backdoor_acc,)
 
 
 if __name__ == '__main__':
