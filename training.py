@@ -239,8 +239,12 @@ def run_continuation(hlpr: Helper):
     predictor_lr = hlpr.params.predictor_lr
     corrector_lr = hlpr.params.corrector_lr
 
-    corrector_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=corrector_lr, momentum=0.9)
-    predictor_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=predictor_lr, momentum=0.9)
+    if hlpr.params.optimizer == "SGD":
+        corrector_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=corrector_lr, momentum=0.9)
+        predictor_optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=predictor_lr, momentum=0.9)
+    else:
+        corrector_optimizer = torch.optim.Adam(hlpr.task.model.parameters(), lr=corrector_lr)
+        predictor_optimizer = torch.optim.Adam(hlpr.task.model.parameters(), lr=predictor_lr)
 
     forward_passes_per_pred = 0
     forward_passes_per_corr = 0
@@ -585,6 +589,149 @@ def swipe_parameters(lrs):
         print(f"Failed execution {lr} because of: {e}")
 
 
+def scalar_loss_fn(weights, loss, out_batch, target_batch, attack_portion):
+    res = 0
+    #print(batch.inputs[:attack_portion, :, :, :].shape)
+    #print(batch.labels[:attack_portion].shape)
+    #print(loss(batch.inputs[:attack_portion, :, :, :], batch.labels[:attack_portion]))
+    #clean_batch = Batch(batch.inputs[:attack_portion, :, :, :], batch.labels[:attack_portion])
+    #clean_batch = Batch(batch.batch.inputs[attack_portion:, :, :, :], batch.labels[attack_portion:])
+
+    print(torch.argmax(out_batch[:attack_portion], axis=1))
+
+    res += weights[0] * loss(torch.argmax(out_batch[:attack_portion], axis=1), target_batch.labels[:attack_portion])
+    res += weights[1] * loss(torch.argmax(out_batch[attack_portion:], axis=1), target_batch.labels[attack_portion:])
+    return res
+
+def train_scalarized(hlpr: Helper, epoch, model, optimizer, train_loader, attack=None, weights=[0.5, 0.5]):
+    loss_f = nn.CrossEntropyLoss(reduction='none')
+    model.train()
+    for i, data in tqdm(enumerate(train_loader)):
+        batch = hlpr.task.get_batch(i, data)
+        model.zero_grad()
+
+        # Create poisoned batch
+        batch = batch.clip(hlpr.params.clip_batch)
+        attack_portion = round(
+            batch.batch_size * hlpr.params.poisoning_proportion)
+        back_batch = batch.clone()
+        hlpr.synthesizer.synthesize_inputs(batch=back_batch, attack_portion=attack_portion)
+        hlpr.synthesizer.synthesize_labels(batch=back_batch, attack_portion=attack_portion)
+
+        outputs = model(back_batch.inputs)
+        print(outputs.shape)
+
+        loss = scalar_loss_fn(weights, loss_f, outputs, back_batch, attack_portion)
+        loss.backward()
+        model.backward_passes += 1
+        optimizer.step()
+    return
+
+
+def run_scalarization(hlpr: Helper):
+    model_path = hlpr.params.continuation_model_path
+
+    maintask_losses = deque('')
+    backdoor_losses = deque('')
+    maintask_acc = deque('')
+    backdoor_acc = deque('')
+
+    if hlpr.params.track_training:
+        tr_maintask_losses = deque('')
+        tr_backdoor_losses = deque('')
+        tr_maintask_acc = deque('')
+        tr_backdoor_acc = deque('')
+
+    distances_to_initial_solution = deque('')
+    weight_distances = deque('')
+    initial_model_weights = deque('')
+    l1_norms = deque('')
+
+    forward_passes_per_iteration = 0
+    backward_passes_per_iteration = 0
+
+    #scalarization_step_size = 1/hlpr.params.max_continuation_iterations
+    #weights_ascending = range(0, 1+scalarization_step_size, scalarization_step_size)
+    weights_ascending = np.linspace(0, 1, num=hlpr.params.max_continuation_iterations)
+    for iteration, weight_a in enumerate(weights_ascending):
+        model = SimpleNet(100).to(device="cuda")
+        hlpr.task.model = model
+        if iteration == 0:
+            initial_model_weights = [params.clone() for params in model.parameters()]
+
+        if hlpr.params.optimizer == "SGD":
+            optimizer = torch.optim.SGD(hlpr.task.model.parameters(), lr=hlpr.params.lr, momentum=0.9)
+        else:
+            optimizer = torch.optim.Adam(hlpr.task.model.parameters(), lr=hlpr.params.lr)
+
+        start_time = time.time()
+        previous_model_weights = [p.clone() for p in model.parameters()]
+
+        # Train
+        weights = [float(weight_a), float(1-weight_a)]
+        train_scalarized(hlpr, iteration, model, optimizer, hlpr.task.train_loader, attack=True, weights=weights)
+        
+        model.reset_passes()
+        print(f"Finished training iteration {iteration} at {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
+        if iteration == 0:
+            forward_passes_per_iteration = model.forward_passes
+            backward_passes_per_iteration = model.backward_passes
+            model.reset_passes()
+
+        next_model_weights = [params.clone() for params in model.parameters()]
+        collect_loss_and_accuracy(hlpr, maintask_losses, maintask_acc, backdoor_losses, backdoor_acc, backwards=False)
+        if hlpr.params.track_training:    
+            collect_loss_and_accuracy(hlpr, tr_maintask_losses, tr_maintask_acc, tr_backdoor_losses, tr_backdoor_acc,
+                                    training=True)
+        collect_regularization(next_model_weights, l1_norms)
+        collect_distance(initial_model_weights, next_model_weights, distances_to_initial_solution, backwards=False)
+        collect_distance(previous_model_weights, next_model_weights, weight_distances, backwards=False)
+
+        # 6. Intermediary plot
+        if iteration % hlpr.params.plot_continuation_on_iteration == 0 \
+                or iteration == hlpr.params.max_continuation_iterations - 1:
+            print(f"Plotting {iteration} under {model_path}")
+            plot_results(hlpr, hlpr.params.lr, hlpr.params.lr,
+                        maintask_losses, backdoor_losses,
+                        maintask_losses, backdoor_losses,
+                        maintask_acc, backdoor_acc,
+                        weight_distances,
+                        distances_to_initial_solution,
+                        l1_norms)
+
+        if iteration % hlpr.params.continuation_checkpoints_at == 0 \
+                or iteration == hlpr.params.max_continuation_iterations - 1:
+            print(f"Checkpointin model {iteration} under {model_path}")
+            hlpr.save_model(model, iteration)
+
+        # 7. Write down all results
+        print(f"Forward passes per iteration: {forward_passes_per_iteration}")
+        print(f"Backward passes per iteration step: {backward_passes_per_iteration}")
+
+        save_continuation_results(helper,
+                                maintask_losses,
+                                maintask_acc,
+                                backdoor_losses,
+                                backdoor_acc,
+                                maintask_losses,
+                                maintask_acc,
+                                backdoor_losses,
+                                backdoor_acc,
+                                distances_to_initial_solution,
+                                weight_distances,
+                                l1_norms)
+        if hlpr.params.track_training:
+            save_training_continuation_results(helper,
+                                tr_maintask_losses,
+                                tr_maintask_acc,
+                                tr_backdoor_losses,
+                                tr_backdoor_acc,
+                                tr_maintask_losses,
+                                tr_maintask_acc,
+                                tr_backdoor_losses,
+                                tr_backdoor_acc,)    
+
+
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description='Backdoors')
     parser.add_argument('--params', dest='params', default='utils/params.yaml')
@@ -613,6 +760,8 @@ if __name__ == '__main__':
         if helper.params.fl:
             fl_run(helper)
         else:
+            if helper.params.scalarization:
+                run_scalarization(helper)
             if helper.params.continuation:
                 run_continuation(helper)
             else:

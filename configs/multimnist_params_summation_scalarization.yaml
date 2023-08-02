@@ -1,6 +1,6 @@
 task: MultiMNIST
 synthesizer: Summation
-continuation_model_path: "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/trained_models/clean_sgd.tar"
+continuation_model_path: "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/trained_models/summation_bd_sgd_calibrated.tar"
 distributed: True
 
 batch_size: 512
@@ -9,15 +9,15 @@ val_batch_size: 100
 lr: 0.005
 momentum: 0.9
 decay: 0.0005
-epochs: 100
+epochs: 10
 save_on_epochs: []
-optimizer: Adam
-log_interval: 10
+optimizer: SGD
+log_interval: 300
 scheduler: False
 
-poisoning_proportion: 1.0
+poisoning_proportion: 0.8
 backdoor_label: 8
-backdoor: False
+backdoor: True
 backdoor_dynamic_position: False
 
 loss_balance: MGDA
@@ -27,16 +27,17 @@ save_model: True
 log: True
 tb: False
 
+scalarization: True
 continuation: False
-max_continuation_iterations: 100
+max_continuation_iterations: 16
 plot_continuation_on_iteration: 4
 continuation_checkpoints_at: 4
 calibration: False
 calibration_iterations: 2000
 stop_at: 0.001
-predictor_steps: 16
+predictor_steps: 256
 predictor_lr: 0.0001
-corrector_steps: 32
+corrector_steps: 512
 corrector_lr: 0.0001
 other_direction: False
 both_directions: False
@@ -48,7 +49,7 @@ transform_train: True
 
 loss_tasks:
   - backdoor
-#  - normal
+  - normal
 #  - neural_cleanse
 #  - sentinet_evasion
 

@@ -104,6 +104,7 @@ class Params:
     running_scales = None
 
     # Continuation parameters
+    scalarization: bool = False
     continuation: bool = False
     max_continuation_iterations: int = 1000
     save_continuation_on_iteration: int = 10
