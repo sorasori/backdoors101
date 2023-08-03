@@ -623,8 +623,7 @@ def train_scalarized(hlpr: Helper, epoch, model, optimizer, train_loader, attack
 
 
 def run_scalarization(hlpr: Helper):
-    model_path = hlpr.params.continuation_model_path
-
+    model_path = hlpr.params.folder_path
     maintask_losses = deque('')
     backdoor_losses = deque('')
     maintask_acc = deque('')
@@ -646,9 +645,10 @@ def run_scalarization(hlpr: Helper):
 
     weights_ascending = np.linspace(0, 1, num=hlpr.params.max_continuation_iterations)
     start_time = time.time()
+    path = hlpr.params.folder_path
     for iteration, weight_a in enumerate(weights_ascending):
         print(f"Starting iteration {iteration} with weights {weight_a} and {1-weight_a}")
-        model = SimpleNet(100).to(device="cuda")
+        model = SimpleNet(100).to(device="mps")
         hlpr.task.model = model
         if iteration == 0:
             initial_model_weights = [params.clone() for params in model.parameters()]
@@ -681,6 +681,8 @@ def run_scalarization(hlpr: Helper):
         collect_distance(previous_model_weights, next_model_weights, weight_distances, backwards=False)
 
         # 6. Intermediary plot
+        hlpr.params.folder_path = f"{path}/model_{iteration}"
+        os.mkdir(hlpr.params.folder_path)
         if iteration % hlpr.params.plot_continuation_on_iteration == 0 \
                 or iteration == hlpr.params.max_continuation_iterations - 1:
             print(f"Plotting {iteration} under {model_path}/{iteration}")
@@ -696,7 +698,7 @@ def run_scalarization(hlpr: Helper):
         if iteration % hlpr.params.continuation_checkpoints_at == 0 \
                 or iteration == hlpr.params.max_continuation_iterations - 1:
             print(f"Checkpointin model {iteration} under {model_path}")
-            hlpr.save_model(model, iteration, path=f"{model_path}/{iteration}")
+            hlpr.save_model(model, iteration)
 
         # 7. Write down all results
         print(f"Forward passes per iteration: {forward_passes_per_iteration}")
