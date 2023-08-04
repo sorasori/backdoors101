@@ -1,6 +1,6 @@
 task: MultiMNIST
 synthesizer: Summation
-continuation_model_path: "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/trained_models/summation_bd_adam_calibrated.tar"
+continuation_model_path: "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/trained_models/summation_bd_adam.tar"
 distributed: True
 
 batch_size: 512
@@ -31,7 +31,7 @@ continuation: True
 max_continuation_iterations: 16
 plot_continuation_on_iteration: 4
 continuation_checkpoints_at: 4
-calibration: False
+calibration: True
 calibration_iterations: 2000
 stop_at: 0.001
 predictor_steps: 256

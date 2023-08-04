@@ -28,10 +28,10 @@ log: True
 tb: False
 
 continuation: True
-max_continuation_iterations: 2
-plot_continuation_on_iteration: 2
-continuation_checkpoints_at: 2
-calibration: True
+max_continuation_iterations: 16
+plot_continuation_on_iteration: 4
+continuation_checkpoints_at: 4
+calibration: False
 calibration_iterations: 2000
 stop_at: 0.001
 predictor_steps: 256
