@@ -6,16 +6,16 @@ distributed: True
 batch_size: 512
 test_batch_size: 100
 val_batch_size: 100
-lr: 0.0001
+lr: 0.0005
 momentum: 0.9
 decay: 0.0005
 epochs: 100
 save_on_epochs: []
-optimizer: Adam
+optimizer: SGD
 log_interval: 300
 scheduler: False
 
-poisoning_proportion: 0.2
+poisoning_proportion: 0.5
 backdoor_label: 8
 backdoor: True
 backdoor_dynamic_position: False

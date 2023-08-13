@@ -1,21 +1,21 @@
 task: MultiMNIST
-synthesizer: SinglePixel
-continuation_model_path: "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/trained_models/singlepixel_bd_adam.tar"
+synthesizer: Pattern
+continuation_model_path: "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/trained_models/singlepixel_bd_adam_calibrated.tar"
 distributed: True
 
 batch_size: 512
 test_batch_size: 100
 val_batch_size: 100
-lr: 0.005
+lr: 0.0005
 momentum: 0.9
 decay: 0.0005
 epochs: 100
 save_on_epochs: []
-optimizer: SGD
+optimizer: Adam
 log_interval: 300
 scheduler: False
 
-poisoning_proportion: 0.8
+poisoning_proportion: 0.5
 backdoor_label: 8
 backdoor: True
 backdoor_dynamic_position: False
@@ -27,8 +27,9 @@ save_model: True
 log: True
 tb: False
 
-continuation: True
-max_continuation_iterations: 16
+scalarization: True
+continuation: False
+max_continuation_iterations: 20
 plot_continuation_on_iteration: 4
 continuation_checkpoints_at: 4
 calibration: False
@@ -36,10 +37,10 @@ calibration_iterations: 2000
 stop_at: 0.001
 predictor_steps: 256
 predictor_lr: 0.0001
-corrector_steps: 1024
+corrector_steps: 512
 corrector_lr: 0.0001
 other_direction: False
-both_directions: True
+both_directions: False
 track_training: True
 count_passes: True
 

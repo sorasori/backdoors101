@@ -1,6 +1,6 @@
 task: MultiMNIST
 synthesizer: Summation
-continuation_model_path: "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/trained_models/clean_sgd.tar"
+continuation_model_path: "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/trained_models/clean_adam_contin_2.tar"
 distributed: True
 
 batch_size: 512
@@ -11,7 +11,7 @@ momentum: 0.9
 decay: 0.0005
 epochs: 10
 save_on_epochs: []
-optimizer: SGD
+optimizer: Adam
 log_interval: 300
 scheduler: False
 
@@ -28,15 +28,15 @@ log: True
 tb: False
 
 continuation: True
-max_continuation_iterations: 100
+max_continuation_iterations: 16
 plot_continuation_on_iteration: 4
 continuation_checkpoints_at: 4
 calibration: False
 calibration_iterations: 2000
 stop_at: 0.001
-predictor_steps: 16
+predictor_steps: 512
 predictor_lr: 0.0001
-corrector_steps: 32
+corrector_steps: 1024
 corrector_lr: 0.0001
 other_direction: False
 both_directions: False

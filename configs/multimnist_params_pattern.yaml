@@ -1,6 +1,6 @@
 task: MultiMNIST
 synthesizer: Pattern
-continuation_model_path: "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/trained_models/pattern_bd_sgd_calibrated.tar"
+continuation_model_path: "/scratch/hpc-lco-plessl-hpc/dvoth/backdoors101/runs/trained_models/pattern_bd_adam.tar"
 distributed: True
 
 batch_size: 512
@@ -28,18 +28,18 @@ log: True
 tb: False
 
 continuation: True
-max_continuation_iterations: 16
+max_continuation_iterations: 32
 plot_continuation_on_iteration: 2
 continuation_checkpoints_at: 2
 calibration: False
 calibration_iterations: 2000
 stop_at: 0.001
 predictor_steps: 256
-predictor_lr: 0.0001
+predictor_lr: 0.0005
 corrector_steps: 1024
-corrector_lr: 0.0001
+corrector_lr: 0.0005
 other_direction: False
-both_directions: False
+both_directions: True
 track_training: True
 count_passes: True
 
